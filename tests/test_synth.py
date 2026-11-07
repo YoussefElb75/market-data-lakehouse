@@ -41,6 +41,16 @@ def test_volumes_and_shapes() -> None:
     assert len(ids) == len(set(ids))
 
 
+def test_event_ids_unique_across_bursts() -> None:
+    first = synth.generate(_cfg(anomalies=synth.Anomalies(0, 0, 0, 0)))
+    second = synth.generate(_cfg(start=START + timedelta(seconds=120), anomalies=synth.Anomalies(0, 0, 0, 0)))
+    ids_1 = {e["event_id"] for e in first.events}
+    ids_2 = {e["event_id"] for e in second.events}
+    assert ids_1
+    assert ids_2
+    assert not ids_1 & ids_2
+
+
 def test_prices_stay_on_tick_grid() -> None:
     fx = next(i for i in synth.DEFAULT_INSTRUMENTS if i.symbol == "SYN-FX1")
     trades = [t for t in synth.generate(_cfg()).stream("trade") if t["symbol"] == "SYN-FX1"]
@@ -87,6 +97,12 @@ def test_write_bursts_splits_streams(tmp_path: Path) -> None:
     lines = [json.loads(line) for p in trade_files for line in p.read_text(encoding="utf-8").splitlines()]
     assert len(lines) == len(batch.stream("trade"))
     assert all(len(p.read_text(encoding="utf-8").splitlines()) <= 200 for p in paths)
+    manifests = list((tmp_path / "_manifests" / "synth").rglob("*.json"))
+    assert len(manifests) == len(paths)
+    docs = [json.loads(m.read_text(encoding="utf-8")) for m in manifests]
+    assert sum(d["row_count"] for d in docs) == len(batch.events)
+    # Simulated 2030 events, but manifests carry the real write time (lag never negative).
+    assert all(datetime.fromisoformat(d["fetched_at"]) <= datetime.now(UTC) for d in docs)
 
 
 def test_config_validation() -> None:

@@ -1,0 +1,71 @@
+resources:
+  jobs:
+    daily:
+      name: mdl-daily-${bundle.target}
+      description: >-
+        Ingest ECB data (windowed backfill, then incremental) and a synthetic tick burst,
+        update the medallion pipeline, then compute DQ KPIs and check every gold contract.
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+      schedule:
+        # After the ECB publishes its reference rates (around 16:00 CET).
+        quartz_cron_expression: "0 30 17 ? * MON-FRI"
+        timezone_id: Europe/Berlin
+        pause_status: ${var.schedule_pause}
+      tags:
+        project: market-data-lakehouse
+      environments:
+        - environment_key: mdl
+          spec:
+            environment_version: ${var.serverless_env}
+            dependencies:
+              - ${workspace.file_path}
+      tasks:
+        - task_key: ingest_ecb
+          environment_key: mdl
+          max_retries: 1
+          spark_python_task:
+            python_file: ../jobs/ingest.py
+            parameters:
+              - ingest-ecb
+              - --landing
+              - /Volumes/${var.catalog}/landing/${resources.volumes.raw.name}
+              - --backfill-start
+              - ${var.backfill_start}
+              - --window-days
+              - ${var.backfill_window_days}
+              - --max-windows
+              - ${var.backfill_max_windows}
+
+        - task_key: synth_burst
+          environment_key: mdl
+          spark_python_task:
+            python_file: ../jobs/ingest.py
+            parameters:
+              - synth
+              - --landing
+              - /Volumes/${var.catalog}/landing/${resources.volumes.raw.name}
+              - --seconds
+              - "300"
+              - --bursts
+              - "2"
+              - --rate
+              - "5"
+
+        - task_key: refresh_pipeline
+          depends_on:
+            - task_key: ingest_ecb
+            - task_key: synth_burst
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.medallion.id}
+            full_refresh: false
+
+        - task_key: post_checks
+          depends_on:
+            - task_key: refresh_pipeline
+          environment_key: mdl
+          spark_python_task:
+            python_file: ../jobs/post_checks.py
+            parameters:
+              - --catalog
+              - ${var.catalog}

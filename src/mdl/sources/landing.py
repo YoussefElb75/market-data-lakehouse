@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -38,7 +39,11 @@ def atomic_write(root: Path, target: Path, data: bytes) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = tmp_dir / f"{uuid.uuid4().hex}.part"
     tmp.write_bytes(data)
-    tmp.replace(target)
+    try:
+        tmp.replace(target)
+    except OSError:  # some FUSE mounts reject renames across folders: copy, then remove
+        shutil.copyfile(tmp, target)
+        tmp.unlink(missing_ok=True)
     return target
 
 

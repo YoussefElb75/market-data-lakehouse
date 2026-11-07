@@ -1,0 +1,70 @@
+# Declarative Automation Bundle (formerly Databricks Asset Bundle).
+#
+# The workspace host is NOT stored here: it comes from the local Databricks CLI
+# profile, e.g.  databricks bundle deploy -t dev -p mdl
+# (profile created with: databricks auth login --host https://<workspace-host> --profile mdl).
+# Before the first deploy of a target, create its catalog once:
+#   python scripts/uc_bootstrap.py --profile mdl --env dev
+bundle:
+  name: market-data-lakehouse
+
+include:
+  - resources/*.yml
+
+sync:
+  exclude:
+    - probe/**
+    - tests/**
+    - docs/**
+    - scripts/**
+    - .github/**
+
+variables:
+  catalog:
+    description: Unity Catalog catalog of this environment (one catalog per environment).
+  backfill_start:
+    description: First observation date loaded from the ECB on an empty landing zone.
+    default: "2020-01-01"
+  backfill_window_days:
+    description: Length of one ECB backfill request window.
+    default: "366"
+  backfill_max_windows:
+    description: Backfill windows per dataset and run (keeps each run small).
+    default: "8"
+  serverless_env:
+    description: Serverless environment version for job tasks (6 = Python 3.12, Spark 4.2).
+    default: "6"
+  schedule_pause:
+    description: Pause status of the daily schedule.
+    default: PAUSED
+
+targets:
+  dev:
+    default: true
+    # Not `mode: development`: it prefixes every schema with dev_<user>_, while this
+    # project isolates environments by catalog (mdl_dev) and addresses layers by their
+    # plain schema names. The development behaviour that matters is set explicitly.
+    presets:
+      pipelines_development: true
+      trigger_pause_status: PAUSED
+      jobs_max_concurrent_runs: 1
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      catalog: mdl_dev
+
+  prod:
+    mode: production
+    variables:
+      catalog: mdl_prod
+      schedule_pause: UNPAUSED
+    workspace:
+      # Resolved at deploy time; milestone 5 moves prod to a service principal.
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    resources:
+      schemas:
+        landing: {lifecycle: {prevent_destroy: true}}
+        bronze: {lifecycle: {prevent_destroy: true}}
+        silver: {lifecycle: {prevent_destroy: true}}
+        gold: {lifecycle: {prevent_destroy: true}}
+        ops: {lifecycle: {prevent_destroy: true}}

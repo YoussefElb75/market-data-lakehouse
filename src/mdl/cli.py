@@ -42,15 +42,19 @@ def cmd_ingest_ecb(args: argparse.Namespace) -> int:
         print(f"unknown dataset(s): {', '.join(unknown)}", file=sys.stderr)
         return 2
     for name in names:
-        manifest = ecb.ingest(
+        manifests = ecb.ingest(
             ecb.DATASETS[name],
             landing,
             backfill_start=args.backfill_start,
+            window_days=args.window_days,
+            max_windows=args.max_windows,
             margin=timedelta(hours=args.margin_hours),
             full=args.full,
         )
-        summary = {k: v for k, v in asdict(manifest).items() if k not in ("extra", "request_params")}
-        print(json.dumps(summary, sort_keys=True))
+        for manifest in manifests:
+            summary = {k: v for k, v in asdict(manifest).items() if k not in ("extra", "request_params")}
+            summary["mode"] = manifest.extra.get("mode")
+            print(json.dumps(summary, sort_keys=True))
     return 0
 
 
@@ -86,6 +90,8 @@ def build_parser() -> argparse.ArgumentParser:
     ing.add_argument("--landing", required=True, help="landing root (local folder or /Volumes/...)")
     ing.add_argument("--dataset", nargs="+", default=["all"], help="dataset names, or 'all'")
     ing.add_argument("--backfill-start", default="2020-01-01", help="startPeriod for first/full loads")
+    ing.add_argument("--window-days", type=int, default=366, help="backfill window length")
+    ing.add_argument("--max-windows", type=int, default=8, help="backfill windows per run and dataset")
     ing.add_argument("--margin-hours", type=float, default=6.0, help="overlap for updatedAfter")
     ing.add_argument("--full", action="store_true", help="ignore state and reload from backfill start")
     ing.set_defaults(func=cmd_ingest_ecb)

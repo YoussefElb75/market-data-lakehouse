@@ -1,0 +1,23 @@
+resources:
+  pipelines:
+    medallion:
+      name: mdl-medallion-${bundle.target}
+      catalog: ${var.catalog}
+      schema: ${resources.schemas.bronze.name}
+      serverless: true
+      channel: CURRENT
+      continuous: false
+      root_path: ../lakeflow
+      libraries:
+        - glob:
+            include: ../lakeflow/**
+      environment:
+        dependencies:
+          # Installs this repository's `mdl` package (src/) from the synced bundle files, as a
+          # regular install: serverless does not pick up editable-install import hooks.
+          - ${workspace.file_path}
+      configuration:
+        mdl.catalog: ${var.catalog}
+        mdl.landing: /Volumes/${var.catalog}/landing/${resources.volumes.raw.name}
+      tags:
+        project: market-data-lakehouse

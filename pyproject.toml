@@ -47,7 +47,7 @@ mdl = ["py.typed", "contracts/*.yml"]
 [tool.ruff]
 line-length = 110
 target-version = "py312"
-src = ["src", "tests", "scripts", "probe"]
+src = ["src", "tests", "scripts", "probe", "lakeflow", "jobs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF", "PTH", "PL", "C4", "PT", "BLE", "A"]
@@ -66,7 +66,9 @@ ignore = [
 python_version = "3.12"
 strict = true
 warn_unreachable = true
-files = ["src", "tests", "scripts"]
+# lakeflow/ targets the Databricks runtime implementation of pyspark.pipelines
+# (expectations, SCD2), which the open-source stubs do not describe; ruff still checks it.
+files = ["src", "tests", "scripts", "jobs"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]

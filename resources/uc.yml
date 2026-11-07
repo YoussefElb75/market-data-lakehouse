@@ -1,0 +1,35 @@
+# Unity Catalog layout: one catalog per environment, one schema per layer,
+# and a managed Volume as the landing zone for raw files.
+#
+# The catalog itself is created by scripts/uc_bootstrap.py (SQL): on Free Edition
+# the catalogs REST API cannot create Default Storage catalogs.
+resources:
+  schemas:
+    landing:
+      catalog_name: ${var.catalog}
+      name: landing
+      comment: Raw files as fetched (UC Volume). Never modified, never committed to git.
+    bronze:
+      catalog_name: ${var.catalog}
+      name: bronze
+      comment: Raw rows as landed plus ingestion metadata. Append-only streaming tables.
+    silver:
+      catalog_name: ${var.catalog}
+      name: silver
+      comment: Typed, validated, deduplicated tables; SCD1 facts and SCD2 reference data.
+    gold:
+      catalog_name: ${var.catalog}
+      name: gold
+      comment: Curated marts, each bound to a data contract (src/mdl/contracts).
+    ops:
+      catalog_name: ${var.catalog}
+      name: ops
+      comment: Operational tables, quarantine and contract check results.
+
+  volumes:
+    raw:
+      catalog_name: ${var.catalog}
+      schema_name: ${resources.schemas.landing.name}
+      name: raw
+      volume_type: MANAGED
+      comment: Landing zone. ecb/ and synth/ payloads, _manifests/, _state/ (ingestion cursors).

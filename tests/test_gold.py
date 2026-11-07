@@ -150,7 +150,7 @@ def test_freshness_from_manifests(spark: SparkSession, tmp_path: Path) -> None:
     ds = ecb.DATASETS["fx_reference_rates"]
     t0 = datetime(2030, 1, 4, 16, tzinfo=UTC)
     session = FakeSession([FakeResponse(200, FAKE_EXR_CSV), FakeResponse(404, FAKE_NO_DATA)])
-    ecb.ingest(ds, landing, session=session, now=lambda: t0)
+    ecb.ingest(ds, landing, backfill_start="2030-01-01", session=session, now=lambda: t0)
     ecb.ingest(ds, landing, session=session, now=lambda: t0 + timedelta(hours=24))
     lines = [f.read_text(encoding="utf-8") for f in sorted((tmp_path / "_manifests").rglob("*.json"))]
     manifests = spark.read.schema(bronze.MANIFEST_SCHEMA_DDL).json(spark.sparkContext.parallelize(lines, 1))

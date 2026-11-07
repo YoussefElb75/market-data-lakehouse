@@ -33,6 +33,15 @@ The workspace host lives only in your local Databricks CLI profile
 (`databricks auth login --host https://<workspace-host> --profile mdl`).
 It is never written to this repository.
 
+## Deploy (dev)
+
+```bash
+databricks auth login --host https://<workspace-host> --profile mdl   # once
+python scripts/uc_bootstrap.py --profile mdl --env dev                # once: creates mdl_dev
+databricks bundle deploy -t dev -p mdl
+databricks bundle run daily -t dev -p mdl
+```
+
 ## License
 
 MIT, see [LICENSE](LICENSE). Data sources keep their own terms, see [DATA.md](DATA.md).

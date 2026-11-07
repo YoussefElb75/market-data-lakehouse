@@ -77,6 +77,7 @@ def fx_rates(bronze: DataFrame) -> DataFrame:
         "obs_status",
         "_ingest_ts",
         "_source_file",
+        "_file_modified_at",
     )
 
 
@@ -93,6 +94,7 @@ def yield_curve(bronze: DataFrame) -> DataFrame:
         "obs_status",
         "_ingest_ts",
         "_source_file",
+        "_file_modified_at",
     )
 
 
@@ -108,6 +110,7 @@ def estr(bronze: DataFrame) -> DataFrame:
         "obs_status",
         "_ingest_ts",
         "_source_file",
+        "_file_modified_at",
     )
 
 
@@ -117,15 +120,42 @@ def latest_per_key(df: DataFrame, keys: Sequence[str], order_by: Sequence[str]) 
     return df.withColumn("_rn", F.row_number().over(window)).where("_rn = 1").drop("_rn")
 
 
+SERIES_ATTRIBUTES = ("title", "title_compl", "unit", "unit_mult", "decimals")
+
+
 def series_attributes(bronze: DataFrame) -> DataFrame:
-    """One change record per series and ingest: the descriptive attributes (SCD2 input)."""
-    wanted = ["title", "title_compl", "unit", "unit_measure", "unit_mult", "decimals", "source_agency"]
-    present = [c for c in wanted if c in bronze.columns]
+    """Descriptive attributes per series and landed file: the SCD2 input.
+
+    Conformed across dataflows: ``unit`` is ``UNIT`` (EXR) or ``UNIT_MEASURE``
+    (EST, YC). Attributes a dataflow lacks are NULL. One row per series and
+    file, sequenced by ``change_sequence()``.
+    """
+    cols = set(bronze.columns)
+
+    def pick(*names: str) -> Column:
+        present = [F.col(n) for n in names if n in cols]
+        return F.coalesce(*present) if present else F.lit(None).cast("string")
+
     return bronze.select(
         F.col("key").alias("series_key"),
-        *[F.col(c) for c in present],
+        pick("title").alias("title"),
+        pick("title_compl").alias("title_compl"),
+        pick("unit", "unit_measure").alias("unit"),
+        pick("unit_mult").alias("unit_mult"),
+        pick("decimals").alias("decimals"),
+        "_file_modified_at",
+        "_source_file",
         "_ingest_ts",
-    ).dropDuplicates(["series_key", *present, "_ingest_ts"])
+    ).dropDuplicates(["series_key", "_source_file"])
+
+
+def change_sequence() -> Column:
+    """Ordering of landed versions: file time, then file name (which embeds a UTC stamp).
+
+    ``_ingest_ts`` is the same for every row of a micro-batch, so two versions
+    landing in one batch would tie; the file metadata does not.
+    """
+    return F.struct(F.col("_file_modified_at"), F.col("_source_file"))
 
 
 def scd2(
@@ -159,6 +189,8 @@ def currencies(bronze_rows: DataFrame) -> DataFrame:
         "codelist_id",
         "codelist_version",
         "_ingest_ts",
+        "_source_file",
+        "_file_modified_at",
     )
 
 
@@ -175,6 +207,7 @@ def trades(bronze: DataFrame) -> DataFrame:
         "venue",
         "_ingest_ts",
         "_source_file",
+        "_file_modified_at",
     )
 
 
@@ -214,4 +247,5 @@ def book_top(bronze: DataFrame, depth: int = 10) -> DataFrame:
         F.size(asks).alias("ask_levels"),
         "_ingest_ts",
         "_source_file",
+        "_file_modified_at",
     )

@@ -27,3 +27,12 @@ afterwards: the bundle, the `mdl_probe` catalog and the service principal.
 | `bundle deploy`, `run`, `destroy` with an OAuth CLI profile | Work | Host stays in the local profile; `databricks.yml` holds no host |
 | `bundle validate` with no workspace | Fails: it calls `/api/2.0/preview/scim/v2/Me` | CI runs `validate --strict` against `scripts/stub_workspace.py`, a local stub, with no secret |
 | `bundle validate --strict` | Fails on type warnings; unresolved `${resources...}` references are **not** reported | CI adds a pytest check on the rendered `validate -o json` |
+
+## Found during milestone 4 (first dev deploy)
+
+| Finding | Consequence |
+|---|---|
+| The bundle `catalogs` resource (catalogs REST API) fails: "Metastore storage root URL does not exist. Default Storage is enabled", while SQL `CREATE CATALOG` works | `scripts/uc_bootstrap.py` creates the catalog once per environment with SQL; schemas and the Volume stay bundle resources (`prevent_destroy` in prod) |
+| `mode: development` prefixes every UC schema with `dev_<user>_`, and an empty `presets.name_prefix` does not turn it off | The dev target sets the presets it needs (pipeline development mode, paused triggers, one concurrent run) without `mode: development`; environments are isolated by catalog |
+| `--editable ${workspace.file_path}` as a serverless dependency installs without error, but `import mdl` then fails | A regular install of the synced project folder (`${workspace.file_path}`) |
+| `system.access.table_lineage` filled within about 40 minutes (68 rows for `mdl_dev`); `system.billing.usage` still had no rows for the day | Lineage from system tables is usable; cost notes cannot rely on same-day billing rows |

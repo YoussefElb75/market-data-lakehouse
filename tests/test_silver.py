@@ -88,8 +88,16 @@ def test_scd2_versions_only_on_tracked_change(spark: SparkSession) -> None:
 def test_series_attributes_picks_present_columns(spark: SparkSession, tmp_path: Path) -> None:
     builders.write_csv(tmp_path, "exr.csv", builders.EXR_HEADER, builders.exr_rows(DAYS))
     attrs = silver.series_attributes(builders.read_bronze_csv(spark, tmp_path, "fx_reference_rates"))
-    assert {"series_key", "title", "unit", "decimals", "_ingest_ts"} <= set(attrs.columns)
+    assert set(silver.SERIES_ATTRIBUTES) <= set(attrs.columns)
     assert attrs.count() == len(builders.FAKE_FX)
+    assert {r.unit for r in attrs.collect()} == set(builders.FAKE_FX)  # EXR UNIT column
+
+
+def test_series_attributes_conformed_for_estr(spark: SparkSession, tmp_path: Path) -> None:
+    builders.write_csv(tmp_path, "est.csv", builders.EST_HEADER, builders.est_rows(DAYS))
+    attrs = silver.series_attributes(builders.read_bronze_csv(spark, tmp_path, "estr"))
+    got = {r.series_key: (r.unit, r.title_compl) for r in attrs.collect()}
+    assert got == {"EST.B.EU000A2X2A25.WT": ("PC", None), "EST.B.EU000A2X2A25.TT": ("EUR", None)}
 
 
 def test_trades_quality_catches_every_injected_malformed_event(spark: SparkSession, tmp_path: Path) -> None:

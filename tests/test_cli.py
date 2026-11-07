@@ -51,7 +51,21 @@ def test_ingest_one_dataset(
         return real_ingest(*args, session=session, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(ecb, "ingest", fake_ingest)
-    assert cli.main(["ingest-ecb", "--landing", str(tmp_path), "--dataset", "fx_reference_rates"]) == 0
+    assert (
+        cli.main(
+            [
+                "ingest-ecb",
+                "--landing",
+                str(tmp_path),
+                "--dataset",
+                "fx_reference_rates",
+                "--max-windows",
+                "1",
+            ]
+        )
+        == 0
+    )
     line = json.loads(capsys.readouterr().out)
     assert line["row_count"] == 3
     assert line["dataset"] == "fx_reference_rates"
+    assert line["mode"] == "backfill"

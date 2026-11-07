@@ -3,11 +3,16 @@
 Source: ECB statistics (https://data.ecb.europa.eu). Reuse terms are in DATA.md:
 payloads are landed byte for byte and never modified.
 
-Incremental strategy:
+Incremental strategy (state per dataset in the landing zone):
 
-* first run (or ``full=True``): ``startPeriod=<backfill start>``;
-* later runs: ``updatedAfter=<last success - margin>``, which returns new
-  *and revised* observations, so late corrections reach silver too;
+* backfill (first run, or ``full=True``): windows of ``window_days`` from the
+  backfill start (``startPeriod``/``endPeriod``), at most ``max_windows`` per
+  run. The cursor survives between runs, so a long history is loaded in small
+  pieces that stay within the compute fair-use quota;
+* once caught up: ``updatedAfter=<anchor - margin>``, which returns new *and
+  revised* observations, so late corrections reach silver too. The anchor of
+  the first incremental run is the backfill start time, so revisions published
+  while the backfill ran are not missed;
 * "no data" is HTTP 404 with an SDMX "No Series/No Results" body, treated as an
   empty batch: a manifest is still written for freshness monitoring.
 """
@@ -20,7 +25,7 @@ import json
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
@@ -130,35 +135,17 @@ def _iso_utc(at: datetime) -> str:
     return at.astimezone(UTC).isoformat(timespec="seconds")
 
 
-def request_params(
-    dataset: EcbDataset, state: dict[str, Any], *, backfill_start: str, margin: timedelta, full: bool
-) -> dict[str, str]:
-    if dataset.kind is Kind.CODELIST:
-        return {}
-    params = {"format": "csvdata"}
-    last_success = state.get("last_success_at")
-    if full or not last_success:
-        params["startPeriod"] = backfill_start
-    else:
-        since = datetime.fromisoformat(str(last_success)) - margin
-        params["updatedAfter"] = _iso_utc(since)
-    return params
-
-
-def ingest(
+def _fetch(
     dataset: EcbDataset,
     landing: Landing,
+    params: dict[str, str],
     *,
-    backfill_start: str = "2020-01-01",
-    margin: timedelta = timedelta(hours=6),
-    full: bool = False,
-    session: http.SessionLike | None = None,
-    now: Callable[[], datetime] = utc_now,
-    sleep: Callable[[float], None] | None = None,
+    session: http.SessionLike | None,
+    now: Callable[[], datetime],
+    sleep: Callable[[float], None] | None,
+    mode: str,
 ) -> Manifest:
-    """Fetch one dataset, land the raw payload and its manifest, update the state."""
-    state = landing.read_state(SOURCE, dataset.name)
-    params = request_params(dataset, state, backfill_start=backfill_start, margin=margin, full=full)
+    """One request: land the raw payload (if any) and write its manifest."""
     fetched_at = now()
     accept = "application/xml" if dataset.kind is Kind.CODELIST else "text/csv"
     kwargs: dict[str, Any] = {"session": session, "accept": accept, "ok_status": frozenset({200, 404})}
@@ -172,7 +159,7 @@ def ingest(
     digest = ""
     row_count = 0
     first = last = None
-    extra: dict[str, Any] = {"attribution": ATTRIBUTION}
+    extra: dict[str, Any] = {"attribution": ATTRIBUTION, "mode": mode}
     if result.status == 200:
         if dataset.kind is Kind.CODELIST:
             rows = parse_codelist(result.content)
@@ -207,17 +194,71 @@ def ingest(
         extra=extra,
     )
     landing.write_manifest(manifest)
-    prev_last = state.get("last_period")
-    landing.write_state(
-        SOURCE,
-        dataset.name,
-        {
-            "last_success_at": _iso_utc(fetched_at),
-            "last_batch_id": manifest.batch_id,
-            "last_period": max(filter(None, [prev_last, last]), default=None),
-        },
-    )
     return manifest
+
+
+def ingest(
+    dataset: EcbDataset,
+    landing: Landing,
+    *,
+    backfill_start: str = "2020-01-01",
+    window_days: int = 366,
+    max_windows: int = 8,
+    margin: timedelta = timedelta(hours=6),
+    full: bool = False,
+    today: date | None = None,
+    session: http.SessionLike | None = None,
+    now: Callable[[], datetime] = utc_now,
+    sleep: Callable[[float], None] | None = None,
+) -> list[Manifest]:
+    """Advance one dataset: backfill windows while behind, else one incremental fetch."""
+    if window_days <= 0 or max_windows <= 0:
+        raise ValueError("window_days and max_windows must be positive")
+    fetch_kwargs: dict[str, Any] = {"session": session, "now": now, "sleep": sleep}
+    if dataset.kind is Kind.CODELIST:
+        manifest = _fetch(dataset, landing, {}, mode="snapshot", **fetch_kwargs)
+        landing.write_state(SOURCE, dataset.name, {"last_success_at": manifest.fetched_at})
+        return [manifest]
+
+    state = landing.read_state(SOURCE, dataset.name)
+    if full or not state:
+        state = {"backfill_next": backfill_start, "anchor": None, "last_period": None}
+    end_day = today or now().date()
+    manifests: list[Manifest] = []
+
+    if state.get("backfill_next"):
+        while state["backfill_next"] and len(manifests) < max_windows:
+            window_start = date.fromisoformat(state["backfill_next"])
+            window_end = min(window_start + timedelta(days=window_days - 1), end_day)
+            params = {
+                "format": "csvdata",
+                "startPeriod": window_start.isoformat(),
+                "endPeriod": window_end.isoformat(),
+            }
+            manifest = _fetch(dataset, landing, params, mode="backfill", **fetch_kwargs)
+            manifests.append(manifest)
+            state["anchor"] = state.get("anchor") or manifest.fetched_at
+            state["last_period"] = max(
+                filter(None, [state.get("last_period"), manifest.last_period]), default=None
+            )
+            next_start = window_end + timedelta(days=1)
+            state["backfill_next"] = next_start.isoformat() if next_start <= end_day else None
+            landing.write_state(SOURCE, dataset.name, state)
+        return manifests
+
+    anchor = datetime.fromisoformat(str(state.get("anchor") or state["last_success_at"]))
+    params = {"format": "csvdata", "updatedAfter": _iso_utc(anchor - margin)}
+    manifest = _fetch(dataset, landing, params, mode="incremental", **fetch_kwargs)
+    state.update(
+        {
+            "backfill_next": None,
+            "anchor": manifest.fetched_at,
+            "last_success_at": manifest.fetched_at,
+            "last_period": max(filter(None, [state.get("last_period"), manifest.last_period]), default=None),
+        }
+    )
+    landing.write_state(SOURCE, dataset.name, state)
+    return [manifest]
 
 
 def _json_line(row: dict[str, str]) -> str:

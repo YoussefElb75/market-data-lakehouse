@@ -28,7 +28,7 @@ from typing import Any
 
 import numpy as np
 
-from mdl.sources.landing import Landing
+from mdl.sources.landing import Landing, Manifest, new_batch_id, utc_now
 
 SOURCE = "synth"
 SECONDS_PER_YEAR = 252 * 8 * 3600  # trading-time convention for the GBM step
@@ -105,6 +105,8 @@ def _mid_path(inst: Instrument, seconds: int, rng: np.random.Generator) -> np.nd
 
 def _clean_events(cfg: SynthConfig, rng: np.random.Generator) -> list[tuple[datetime, dict[str, Any]]]:
     out: list[tuple[datetime, dict[str, Any]]] = []
+    # Ids embed the burst start so they stay unique across bursts (sequences restart per burst).
+    burst = cfg.start.astimezone(UTC).strftime("%Y%m%dT%H%M%S")
     for inst in cfg.instruments:
         mids = _mid_path(inst, cfg.seconds, rng)
         half_spread = inst.spread_ticks * inst.tick / 2
@@ -126,7 +128,7 @@ def _clean_events(cfg: SynthConfig, rng: np.random.Generator) -> list[tuple[date
                 px = inst.round_tick(mid + half_spread if side == "buy" else mid - half_spread)
                 event: dict[str, Any] = {
                     "event_type": "trade",
-                    "event_id": f"{inst.symbol}-T{seq:09d}",
+                    "event_id": f"{inst.symbol}-{burst}-T{seq:09d}",
                     "symbol": inst.symbol,
                     "seq": seq,
                     "event_ts": _iso(at),
@@ -140,7 +142,7 @@ def _clean_events(cfg: SynthConfig, rng: np.random.Generator) -> list[tuple[date
                 qty = np.round(rng.lognormal(3.0, 0.6, (2, cfg.depth)))
                 event = {
                     "event_type": "book",
-                    "event_id": f"{inst.symbol}-B{seq:09d}",
+                    "event_id": f"{inst.symbol}-{burst}-B{seq:09d}",
                     "symbol": inst.symbol,
                     "seq": seq,
                     "event_ts": _iso(at),
@@ -224,6 +226,25 @@ def write_bursts(batch: SynthBatch, landing: Landing, *, burst_size: int = 5000)
         for start in range(0, len(rows), burst_size):
             chunk = rows[start : start + burst_size]
             stamp = datetime.fromisoformat(chunk[-1]["emit_ts"].replace("Z", "+00:00"))
-            path, _ = landing.write_payload(SOURCE, dataset, _jsonl(chunk), "json", stamp)
+            payload = _jsonl(chunk)
+            path, digest = landing.write_payload(SOURCE, dataset, payload, "json", stamp)
+            landing.write_manifest(
+                Manifest(
+                    batch_id=new_batch_id(),
+                    source=SOURCE,
+                    dataset=dataset,
+                    # Wall-clock write time: event times are simulated and may lie ahead of it.
+                    fetched_at=utc_now().isoformat(timespec="seconds"),
+                    request_url="synthetic",
+                    request_params={},
+                    http_status=200,
+                    bytes=len(payload),
+                    sha256=digest,
+                    row_count=len(chunk),
+                    payload_path=str(path),
+                    first_period=chunk[0]["event_ts"][:10] if chunk[0]["event_ts"][:4].isdigit() else None,
+                    last_period=chunk[-1]["emit_ts"][:10],
+                )
+            )
             written.append(path)
     return written
