@@ -60,12 +60,29 @@ resources:
             pipeline_id: ${resources.pipelines.medallion.id}
             full_refresh: false
 
+        - task_key: governance
+          # After post_checks (which creates ops.contract_results), even when a contract fails.
+          depends_on:
+            - task_key: post_checks
+          run_if: ALL_DONE
+          environment_key: mdl
+          spark_python_task:
+            python_file: ../jobs/apply_governance.py
+            parameters:
+              - --catalog
+              - ${var.catalog}
+
         - task_key: post_checks
           depends_on:
             - task_key: refresh_pipeline
           environment_key: mdl
+          # Serverless auto-optimization retries a failed task on its own (attempt 1 with no
+          # max_retries set). It is kept: post_checks is idempotent per job run (mdl.checks),
+          # and retries rescue transient failures such as a library installation error.
           spark_python_task:
             python_file: ../jobs/post_checks.py
             parameters:
               - --catalog
               - ${var.catalog}
+              - --job-run-id
+              - "{{job.run_id}}"

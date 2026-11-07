@@ -9,22 +9,39 @@ resources:
       catalog_name: ${var.catalog}
       name: landing
       comment: Raw files as fetched (UC Volume). Never modified, never committed to git.
+      grants:
+        - principal: ${var.pipeline_sp}
+          privileges: [USE_SCHEMA]
     bronze:
       catalog_name: ${var.catalog}
       name: bronze
       comment: Raw rows as landed plus ingestion metadata. Append-only streaming tables.
+      grants:
+        - principal: ${var.pipeline_sp}
+          privileges: [USE_SCHEMA, CREATE_TABLE, CREATE_MATERIALIZED_VIEW, MODIFY, SELECT]
     silver:
       catalog_name: ${var.catalog}
       name: silver
       comment: Typed, validated, deduplicated tables; SCD1 facts and SCD2 reference data.
+      grants:
+        - principal: ${var.pipeline_sp}
+          privileges: [USE_SCHEMA, CREATE_TABLE, CREATE_MATERIALIZED_VIEW, MODIFY, SELECT]
     gold:
       catalog_name: ${var.catalog}
       name: gold
       comment: Curated marts, each bound to a data contract (src/mdl/contracts).
+      grants:
+        - principal: ${var.pipeline_sp}
+          privileges: [USE_SCHEMA, CREATE_TABLE, CREATE_MATERIALIZED_VIEW, MODIFY, SELECT]
+        - principal: ${var.analyst_sp}
+          privileges: [USE_SCHEMA, SELECT]
     ops:
       catalog_name: ${var.catalog}
       name: ops
       comment: Operational tables, quarantine and contract check results.
+      grants:
+        - principal: ${var.pipeline_sp}
+          privileges: [USE_SCHEMA, CREATE_TABLE, CREATE_MATERIALIZED_VIEW, MODIFY, SELECT]
 
   volumes:
     raw:
@@ -33,3 +50,6 @@ resources:
       name: raw
       volume_type: MANAGED
       comment: Landing zone. ecb/ and synth/ payloads, _manifests/, _state/ (ingestion cursors).
+      grants:
+        - principal: ${var.pipeline_sp}
+          privileges: [READ_VOLUME, WRITE_VOLUME]

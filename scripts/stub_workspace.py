@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, urlsplit
 
 ME = {"id": "1", "userName": "ci-user@example.com", "active": True, "groups": []}
 
@@ -26,8 +27,22 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path.endswith("/scim/v2/Me"):
             self._send(200, ME)
+        elif path.endswith("/scim/v2/ServicePrincipals"):
+            # Variable lookups by display name: answer with a placeholder principal.
+            query = parse_qs(urlsplit(self.path).query).get("filter", [""])[0]
+            name = query.split("eq", 1)[-1].strip().strip("'\"") or "stub"
+            principal = {
+                "id": "2",
+                "applicationId": "00000000-0000-0000-0000-000000000000",
+                "displayName": name,
+            }
+            self._send(200, {"Resources": [principal], "totalResults": 1})
         elif path.endswith("/workspace/get-status"):
-            self._send(200, {"object_type": "DIRECTORY", "path": "/Workspace/stub"})
+            self._send(200, {"object_type": "DIRECTORY", "path": "/Workspace/stub", "object_id": 1})
+        elif "/permissions/directories/" in path:
+            self._send(
+                200, {"object_id": "directories/1", "object_type": "directory", "access_control_list": []}
+            )
         else:
             sys.stderr.write(f"stub: unhandled GET {self.path}\n")
             self._send(404, {"error_code": "NOT_FOUND", "message": path})

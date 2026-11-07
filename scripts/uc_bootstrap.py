@@ -44,16 +44,17 @@ def _warehouse(profile: str) -> str:
     return str(warehouses[0]["id"])
 
 
-def run_sql(profile: str, warehouse: str, statement: str) -> None:
+def run_sql(profile: str, warehouse: str, statement: str, *, quiet: bool = False) -> None:
     body = {"statement": statement, "warehouse_id": warehouse, "wait_timeout": "50s"}
     res = _api(profile, "post", "/api/2.0/sql/statements", body)
     while res.get("status", {}).get("state") in ("PENDING", "RUNNING"):
         time.sleep(3)
         res = _api(profile, "get", f"/api/2.0/sql/statements/{res['statement_id']}")
     state = res.get("status", {}).get("state")
+    shown = "<statement with principal ids>" if quiet else statement
     if state != "SUCCEEDED":
-        raise SystemExit(f"{statement!r} failed: {res.get('status', {}).get('error', {}).get('message')}")
-    print(f"[{state}] {statement}")
+        raise SystemExit(f"{shown} failed: {res.get('status', {}).get('error', {}).get('message')}")
+    print(f"[{state}] {shown}")
 
 
 def main(argv: list[str]) -> int:

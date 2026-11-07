@@ -3,23 +3,23 @@ from __future__ import annotations
 import pytest
 from pyspark.sql import SparkSession
 
-from tests.conftest import DELTA_AVAILABLE
+from tests.env import ON_DATABRICKS
+from tests.storage import DeltaStore
 
 
 @pytest.mark.spark
-def test_local_spark_matches_pinned_version(spark: SparkSession) -> None:
+def test_spark_session_works(spark: SparkSession) -> None:
     assert spark.version.startswith("4.")
     df = spark.createDataFrame([(1, "a"), (1, "a"), (2, "b")], ["k", "v"])
     assert df.dropDuplicates().count() == 2
-    assert spark.conf.get("spark.sql.session.timeZone") == "UTC"
+    if not ON_DATABRICKS:
+        assert spark.conf.get("spark.sql.session.timeZone") == "UTC"
 
 
 @pytest.mark.spark
 @pytest.mark.delta
-def test_delta_roundtrip(spark: SparkSession, tmp_path_factory: pytest.TempPathFactory) -> None:
-    assert DELTA_AVAILABLE
-    path = str(tmp_path_factory.mktemp("delta") / "t")
-    spark.range(5).write.format("delta").save(path)
-    spark.range(5, 8).write.format("delta").mode("append").save(path)
-    assert spark.read.format("delta").load(path).count() == 8
-    assert spark.read.format("delta").option("versionAsOf", 0).load(path).count() == 5
+def test_delta_roundtrip_and_time_travel(spark: SparkSession, delta_store: DeltaStore) -> None:
+    delta_store.write(spark.range(5), "t")
+    delta_store.write(spark.range(5, 8), "t", mode="append")
+    assert delta_store.read("t").count() == 8
+    assert delta_store.read("t", version=0).count() == 5

@@ -1,11 +1,14 @@
 """Post-update job task: data-quality KPIs, contract checks and a run summary.
 
-1. ``gold.dq_expectations_daily`` from the pipeline event log (expectation
-   pass/fail counts per dataset and rule, per day).
+1. ``gold.dq_expectations_daily`` is recomputed from the pipeline event log.
 2. Every gold table is checked against its data contract (schema, non-null
-   columns, primary key, quality rules). Results are appended to
-   ``ops.contract_results``, and the task fails if any contract is broken.
+   columns, primary key, quality rules). Results are MERGEd into
+   ``ops.contract_results`` keyed by (job run, contract), and the task fails if
+   any contract is broken.
 3. Row counts per layer and quarantine counts per rule are printed for the run log.
+
+Both writes are idempotent (see ``mdl.checks``): a retry of this task within the
+same job run leaves the tables exactly as one run would.
 """
 
 from __future__ import annotations
@@ -18,65 +21,45 @@ from datetime import UTC, datetime
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-from mdl import contracts
-from mdl.transforms import gold
+from mdl import checks, contracts
 
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--catalog", required=True)
+    parser.add_argument("--job-run-id", required=True, help="{{job.run_id}}: makes retries idempotent")
     parser.add_argument("--event-log-table", default="silver.fx_rates", help="any table of the pipeline")
     args = parser.parse_args(argv)
     spark = SparkSession.builder.getOrCreate()
     cat = args.catalog
-    run_at = datetime.now(UTC)
 
     log = spark.sql(
         f"SELECT timestamp, event_type, details FROM event_log(TABLE({cat}.{args.event_log_table}))"
     )
     dq_table = f"{cat}.gold.dq_expectations_daily"
-    gold.dq_expectations_daily(log).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(
-        dq_table
-    )
-    dq_contract = contracts.load("dq_expectations_daily")
-    spark.sql(f"COMMENT ON TABLE {dq_table} IS {_sql_str(contracts.table_comment(dq_contract))}")
+    checks.write_dq_kpis(log, dq_table, spark)
+    comment = contracts.table_comment(contracts.load("dq_expectations_daily"))
+    spark.sql(f"COMMENT ON TABLE {dq_table} IS {_sql_str(comment)}")
 
-    results = []
-    broken = 0
-    for name, contract in sorted(contracts.load_all().items()):
-        table = f"{cat}.gold.{name}"
-        df = spark.read.table(table)
-        schema_problems = contracts.schema_violations(contract, df.schema)
-        data_problems = contracts.data_violations(contract, df) if not schema_problems else {}
-        rows = df.count()
-        ok = not schema_problems and not data_problems
-        broken += 0 if ok else 1
-        results.append(
-            (
-                run_at,
-                contract.id,
-                contract.version,
-                table,
-                rows,
-                ok,
-                schema_problems,
-                json.dumps(data_problems),
-            )
-        )
-    spark.createDataFrame(
-        results,
-        "checked_at TIMESTAMP, contract STRING, version STRING, table_name STRING, row_count BIGINT, "
-        "passed BOOLEAN, schema_problems ARRAY<STRING>, data_problems STRING",
-    ).write.mode("append").saveAsTable(f"{cat}.ops.contract_results")
+    tables = {name: f"{cat}.gold.{name}" for name in contracts.load_all()}
+    results = checks.check_contracts(spark, tables, args.job_run_id, datetime.now(UTC)).cache()
+    checks.upsert_results(spark, results, f"{cat}.ops.contract_results")
+    rows = results.collect()
 
     summary = {
+        "job_run_id": args.job_run_id,
         "contracts": {
-            r[1]: {"rows": r[4], "passed": r[5], "schema": r[6], "data": json.loads(r[7])} for r in results
+            r.contract: {"rows": r.row_count, "passed": r.passed, "schema": r.schema_problems,
+                         "data": json.loads(r.data_problems)}
+            for r in rows
         },
         "layers": _layer_counts(spark, cat),
         "quarantine_by_rule": _quarantine_counts(spark, cat),
-    }
+    }  # fmt: skip
     print(json.dumps(summary, indent=2, default=str))
+    broken = checks.failed([tuple(r) for r in rows])
+    if broken:
+        print(f"broken contracts: {broken}", file=sys.stderr)
     return 1 if broken else 0
 
 

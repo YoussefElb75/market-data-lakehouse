@@ -36,3 +36,13 @@ afterwards: the bundle, the `mdl_probe` catalog and the service principal.
 | `mode: development` prefixes every UC schema with `dev_<user>_`, and an empty `presets.name_prefix` does not turn it off | The dev target sets the presets it needs (pipeline development mode, paused triggers, one concurrent run) without `mode: development`; environments are isolated by catalog |
 | `--editable ${workspace.file_path}` as a serverless dependency installs without error, but `import mdl` then fails | A regular install of the synced project folder (`${workspace.file_path}`) |
 | `system.access.table_lineage` filled within about 40 minutes (68 rows for `mdl_dev`); `system.billing.usage` still had no rows for the day | Lineage from system tables is usable; cost notes cannot rely on same-day billing rows |
+
+## Found during milestone 5 (prod, roles, tests on serverless)
+
+| Finding | Consequence |
+|---|---|
+| A failed serverless task ran again as `attempt_number` 1 with no `max_retries` set: serverless auto-optimization retries failed tasks unless `disable_auto_optimization` is set | `post_checks` made idempotent per job run (MERGE on `(job_run_id, contract)`), proven by a Delta test; retries kept because they also rescued a transient library-installation failure of the `governance` task |
+| A pipeline `run_as` service principal requires the deploying user to hold `servicePrincipal.user` on it (403 otherwise), and creating the principal does not grant it | `scripts/uc_principals.py --grant-deployer` grants it through the access-control rule-set API (opt-in: it is a permission grant) |
+| `delta-spark` as a serverless job dependency makes environment setup fail (it pins pyspark against the Spark Connect client) | Tests on serverless use the runtime's Delta |
+| `ALTER TABLE ... SET TAGS` and column `SET TAGS` work on pipeline-managed materialized views and streaming tables | The `governance` task tags every table after each update |
+| Workspace-local groups exist but are not UC grantees; service principals are | Roles are `mdl-pipeline` and `mdl-analyst` |

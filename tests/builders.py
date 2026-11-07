@@ -23,6 +23,7 @@ from mdl import synth
 from mdl.sources.landing import Landing
 from mdl.transforms import bronze
 from mdl.transforms.silver import TENOR_YEARS
+from tests.env import FILE_IO
 
 EXR_HEADER = [
     "KEY", "FREQ", "CURRENCY", "CURRENCY_DENOM", "EXR_TYPE", "EXR_SUFFIX", "TIME_PERIOD", "OBS_VALUE",
@@ -127,6 +128,11 @@ def _from_files(
 
 
 def read_bronze_csv(spark: SparkSession, folder: Path, dataset: str) -> DataFrame:
+    """Bronze-like CSV read: real file reads where Spark can do file I/O, else in memory."""
+    if FILE_IO:
+        raw = spark.read.options(**bronze.CSV_OPTIONS).csv(folder.as_posix())
+        return bronze.normalise_columns(bronze.with_ingest_metadata(raw, "ecb", dataset))
+
     def read(rdd: RDD[str]) -> DataFrame:
         return spark.read.options(**bronze.CSV_OPTIONS).csv(rdd)
 
@@ -135,6 +141,10 @@ def read_bronze_csv(spark: SparkSession, folder: Path, dataset: str) -> DataFram
 
 
 def read_bronze_json(spark: SparkSession, folder: Path, schema: StructType, dataset: str) -> DataFrame:
+    if FILE_IO:
+        raw = spark.read.options(**bronze.JSON_OPTIONS).schema(schema).json(folder.as_posix())
+        return bronze.with_ingest_metadata(raw, "synth", dataset)
+
     def read(rdd: RDD[str]) -> DataFrame:
         return spark.read.options(**bronze.JSON_OPTIONS).schema(schema).json(rdd)
 

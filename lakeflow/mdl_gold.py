@@ -10,7 +10,7 @@ from typing import Any
 from pyspark import pipelines as dp
 from pyspark.sql import DataFrame, SparkSession
 
-from mdl import contracts
+from mdl import contracts, governance
 from mdl.lakeflow import PipelineConfig
 from mdl.transforms import gold
 
@@ -51,6 +51,7 @@ def _mv(table: str) -> Callable[[Callable[[], DataFrame]], Any]:
         name=CFG.table("gold", table),
         comment=contracts.table_comment(CONTRACTS[table]),
         table_properties=_props(table),
+        schema=governance.column_ddl(CONTRACTS[table]),  # column comments from the contract
     )
 
 
@@ -83,6 +84,7 @@ def curve_metrics_daily() -> DataFrame:
     name=CFG.table("gold", "ohlcv_1m"),
     comment=contracts.table_comment(CONTRACTS["ohlcv_1m"]),
     table_properties=_props("ohlcv_1m"),
+    schema=governance.column_ddl(CONTRACTS["ohlcv_1m"]),
 )
 def ohlcv_1m() -> DataFrame:
     # Streaming aggregation in append mode: a bar is emitted once the watermark passes its end,

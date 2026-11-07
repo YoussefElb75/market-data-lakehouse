@@ -14,9 +14,7 @@ include:
 sync:
   exclude:
     - probe/**
-    - tests/**
     - docs/**
-    - scripts/**
     - .github/**
 
 variables:
@@ -37,6 +35,16 @@ variables:
   schedule_pause:
     description: Pause status of the daily schedule.
     default: PAUSED
+  # Roles are service principals (scripts/uc_principals.py creates them). Their application
+  # ids are resolved by display name at deploy time and never stored in the repository.
+  pipeline_sp:
+    description: Application id of the mdl-pipeline service principal (writes all layers).
+    lookup:
+      service_principal: mdl-pipeline
+  analyst_sp:
+    description: Application id of the mdl-analyst service principal (reads gold).
+    lookup:
+      service_principal: mdl-analyst
 
 targets:
   dev:
@@ -52,6 +60,52 @@ targets:
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     variables:
       catalog: mdl_dev
+    resources:
+      # Dev only: scratch storage and a job that runs the file-I/O and Delta tests on
+      # serverless (they cannot run on the Windows laptop without winutils).
+      schemas:
+        scratch:
+          catalog_name: ${var.catalog}
+          name: scratch
+          comment: Dev-only scratch tables created and dropped by the test job.
+      volumes:
+        scratch:
+          catalog_name: ${var.catalog}
+          schema_name: ${resources.schemas.scratch.name}
+          name: files
+          volume_type: MANAGED
+          comment: Dev-only scratch files for the test job.
+      jobs:
+        tests:
+          name: mdl-tests-${bundle.target}
+          description: pytest on serverless for the tests that need Spark file I/O and Delta.
+          max_concurrent_runs: 1
+          timeout_seconds: 1800
+          environments:
+            - environment_key: tests
+              spec:
+                environment_version: ${var.serverless_env}
+                dependencies:
+                  - ${workspace.file_path}
+                  - pytest==9.2.0
+          tasks:
+            - task_key: pytest_delta_localfs
+              environment_key: tests
+              disable_auto_optimization: true
+              max_retries: 0
+              spark_python_task:
+                python_file: ./jobs/run_tests.py
+                parameters:
+                  - --root
+                  - ${workspace.file_path}
+                  - --scratch-volume
+                  - /Volumes/${var.catalog}/${resources.schemas.scratch.name}/${resources.volumes.scratch.name}
+                  - --scratch-schema
+                  - ${var.catalog}.${resources.schemas.scratch.name}
+                  - --
+                  - -m
+                  - delta or localfs
+                  - -v
 
   prod:
     mode: production
@@ -59,8 +113,17 @@ targets:
       catalog: mdl_prod
       schedule_pause: UNPAUSED
     workspace:
-      # Resolved at deploy time; milestone 5 moves prod to a service principal.
+      # Deployed by an admin; jobs and the pipeline run as the mdl-pipeline service principal.
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    run_as:
+      service_principal_name: ${var.pipeline_sp}
+    permissions:
+      - user_name: ${workspace.current_user.userName}
+        level: CAN_MANAGE
+      - service_principal_name: ${var.pipeline_sp}
+        level: CAN_MANAGE
+      - service_principal_name: ${var.analyst_sp}
+        level: CAN_VIEW
     resources:
       schemas:
         landing: {lifecycle: {prevent_destroy: true}}
