@@ -1,0 +1,62 @@
+# Step 0 probe bundle. The workspace host comes from the local CLI profile
+# (`databricks bundle deploy -t probe -p <profile>`); it is never stored here.
+bundle:
+  name: mdl-probe
+
+targets:
+  probe:
+    mode: development
+    default: true
+
+resources:
+  pipelines:
+    probe_pipeline:
+      name: mdl-probe-pipeline
+      catalog: mdl_probe
+      schema: p
+      serverless: true
+      channel: CURRENT
+      libraries:
+        - file:
+            path: ./probe_pipeline.py
+
+    probe_pipeline_b:
+      name: mdl-probe-pipeline-b
+      catalog: mdl_probe
+      schema: p2
+      serverless: true
+      channel: CURRENT
+      libraries:
+        - file:
+            path: ./probe_pipeline.py
+
+  jobs:
+    probe_job:
+      name: mdl-probe-job
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "6"
+            dependencies:
+              - requests==2.32.5
+      tasks:
+        - task_key: egress_check
+          environment_key: default
+          spark_python_task:
+            python_file: ./egress_check.py
+        - task_key: run_pipeline
+          depends_on:
+            - task_key: egress_check
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.probe_pipeline.id}
+
+    probe_file_trigger:
+      name: mdl-probe-file-trigger
+      trigger:
+        pause_status: PAUSED
+        file_arrival:
+          url: /Volumes/mdl_probe/p/landing/
+      tasks:
+        - task_key: noop
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.probe_pipeline.id}

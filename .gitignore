@@ -1,0 +1,26 @@
+# environments and tooling
+.venv/
+.tools/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Databricks
+.databricks/
+.databrickscfg
+*.env
+.env*
+
+# data: never committed
+data/
+spark-warehouse/
+metastore_db/
+derby.log
+*.parquet
+*.csv
+*.json.gz
+_delta_log/
