@@ -7,9 +7,9 @@ medallion on Delta Lake with Lakeflow Declarative Pipelines, Lakeflow Jobs,
 Unity Catalog governance and Declarative Automation Bundles (formerly Asset
 Bundles).
 
-Everything ran end to end on a Free Edition workspace: a 2020-to-today ECB
-backfill, 9 gold marts that pass their data contracts, and 0 ECB rows
-quarantined. The interesting parts are the [design decisions](#design-decisions)
+Everything runs end to end on a Free Edition workspace, in **dev and prod**: a
+2020-to-today ECB backfill, 9 gold marts that pass their data contracts, and
+0 ECB rows quarantined. Prod runs as a service principal. The interesting parts are the [design decisions](#design-decisions)
 and the [bugs the platform and the data caught](#bugs-found-along-the-way).
 
 - Data sources and their reuse terms: [DATA.md](DATA.md). **No data is stored in this repository.**
@@ -93,6 +93,20 @@ dataset: 80 h for ECB series, which covers a weekend, and 24 h for the
 synthetic stream.
 
 ![Freshness per dataset](docs/img/freshness.png)
+
+The chart shows dev. Prod, after its second daily run, as printed by the
+`post_checks` task (the run log carries freshness, so nobody needs read
+access to prod tables to see it):
+
+| Dataset | Last observation | Lag at refresh | SLA | Within SLA |
+|---|---|---|---|---|
+| ecb.fx_reference_rates | 2026-11-06 | 2.1 min | 80 h | ✓ |
+| ecb.yield_curve_aaa | 2026-11-05 | 2.1 min | 80 h | ✓ |
+| ecb.yield_curve_all | 2026-11-05 | 2.1 min | 80 h | ✓ |
+| ecb.estr | 2026-11-05 | 2.0 min | 80 h | ✓ |
+| ecb.currency_codelist | (code list) | 2.0 min | 192 h | ✓ |
+| synth.trades | 2026-11-07 | 2.0 min | 24 h | ✓ |
+| synth.book_snapshots | 2026-11-07 | 2.0 min | 24 h | ✓ |
 
 ## Volumes
 
@@ -228,9 +242,20 @@ databricks bundle run daily -t dev -p mdl
 databricks bundle run tests -t dev -p mdl                              # file-I/O and Delta tests on serverless
 ```
 
-For prod, the deploying user also needs `servicePrincipal.user` on
-`mdl-pipeline` (`uc_principals.py --grant-deployer`). Then run
-`bundle deploy -t prod`.
+Prod is deployed and running. It uses the same commands with `--env prod`,
+`-t prod` and one extra step: the deploying user needs the
+`servicePrincipal.user` role on `mdl-pipeline` before the pipeline can be
+bound to it (`uc_principals.py --env prod --grant-deployer`, opt-in because
+it is a permission grant). In prod, the job and the pipeline run as
+`mdl-pipeline`, which owns every prod table. The deploying admin has no
+`SELECT` on them unless granted, so least privilege holds for humans too.
+
+```bash
+python scripts/uc_bootstrap.py  --profile mdl --env prod
+python scripts/uc_principals.py --profile mdl --env prod --grant-deployer
+databricks bundle deploy -t prod -p mdl
+databricks bundle run daily -t prod -p mdl
+```
 
 ## Testing
 
@@ -251,12 +276,13 @@ Free Edition has no bill: usage is capped by a daily fair-use quota, and
 exceeding it shuts compute down until the next day. All compute here is
 serverless.
 
-| Run (dev) | Wall time |
+| Run | Wall time |
 |---|---|
-| Daily job, incremental (5 tasks) | 5.5 min: ingest 50 s, synth 44 s, pipeline 193 s, post_checks 85 s, governance 35 s |
-| Pipeline full refresh (all tables from the landing files) | 3.5 min |
-| First run with the 2020-to-today ECB backfill | 9 min |
-| Serverless test job (9 Delta and file tests) | 2 min |
+| Prod, first run with the 2020-to-today ECB backfill | 8.4 min: ingest 137 s, synth 44 s, pipeline 223 s, post_checks 113 s, governance 31 s |
+| Prod, incremental daily run | 6.2 min: ingest 48 s, synth 45 s, pipeline 173 s, post_checks 116 s, governance 36 s |
+| Dev, incremental daily run | 5.5 min: ingest 50 s, synth 44 s, pipeline 193 s, post_checks 85 s, governance 35 s |
+| Dev, pipeline full refresh (all tables from the landing files) | 3.5 min |
+| Dev, serverless test job (9 Delta and file tests) | 2 min |
 
 * About 2 minutes of each pipeline update is serverless startup and table
   setup. One triggered pipeline per environment, never `continuous`, keeps the
@@ -265,7 +291,7 @@ serverless.
   lets a longer history be spread over several runs.
 * `system.billing.usage` had no rows on the day of these runs, so DBU figures
   are not quoted. Use `SELECT * FROM system.billing.usage` once it fills.
-* No run hit a quota warning: no WARN or ERROR events in the pipeline event log.
+* No run hit a quota warning: no WARN or ERROR events in either pipeline's event log.
 
 ## Free Edition limits that shaped the design
 

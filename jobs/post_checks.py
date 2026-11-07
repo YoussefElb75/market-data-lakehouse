@@ -5,7 +5,8 @@
    columns, primary key, quality rules). Results are MERGEd into
    ``ops.contract_results`` keyed by (job run, contract), and the task fails if
    any contract is broken.
-3. Row counts per layer and quarantine counts per rule are printed for the run log.
+3. Row counts per layer, quarantine counts per rule and per-dataset freshness
+   (lag versus SLA) are printed for the run log.
 
 Both writes are idempotent (see ``mdl.checks``): a retry of this task within the
 same job run leaves the tables exactly as one run would.
@@ -55,6 +56,7 @@ def main(argv: list[str]) -> int:
         },
         "layers": _layer_counts(spark, cat),
         "quarantine_by_rule": _quarantine_counts(spark, cat),
+        "freshness": _freshness(spark, cat),
     }  # fmt: skip
     print(json.dumps(summary, indent=2, default=str))
     broken = checks.failed([tuple(r) for r in rows])
@@ -73,6 +75,20 @@ def _layer_counts(spark: SparkSession, cat: str) -> dict[str, dict[str, int]]:
         tables = spark.sql(f"SHOW TABLES IN {cat}.{layer}").where("NOT isTemporary").collect()
         out[layer] = {t.tableName: spark.read.table(f"{cat}.{layer}.{t.tableName}").count() for t in tables}
     return out
+
+
+def _freshness(spark: SparkSession, cat: str) -> dict[str, dict[str, object]]:
+    """Per-dataset lag versus SLA, so the run log shows freshness without extra table access."""
+    rows = spark.read.table(f"{cat}.gold.dataset_freshness").orderBy("source", "dataset").collect()
+    return {
+        f"{r.source}.{r.dataset}": {
+            "last_period": r.last_period,
+            "lag_minutes": round(float(r.fetch_lag_hours) * 60, 1),
+            "sla_hours": r.sla_hours,
+            "within_sla": r.within_sla,
+        }
+        for r in rows
+    }
 
 
 def _quarantine_counts(spark: SparkSession, cat: str) -> dict[str, int]:
