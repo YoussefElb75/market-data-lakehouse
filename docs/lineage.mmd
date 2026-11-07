@@ -1,0 +1,62 @@
+flowchart LR
+  subgraph bronze
+    bronze_ecb_currency_codelist["ecb_currency_codelist"]
+    bronze_ecb_estr["ecb_estr"]
+    bronze_ecb_fx_reference_rates["ecb_fx_reference_rates"]
+    bronze_ecb_yield_curve_aaa["ecb_yield_curve_aaa"]
+    bronze_ecb_yield_curve_all["ecb_yield_curve_all"]
+    bronze_ingest_manifests["ingest_manifests"]
+    bronze_synth_book_snapshots["synth_book_snapshots"]
+    bronze_synth_trades["synth_trades"]
+  end
+  subgraph silver
+    silver_book_top["book_top"]
+    silver_currencies["currencies"]
+    silver_estr["estr"]
+    silver_fx_rates["fx_rates"]
+    silver_series_attributes["series_attributes"]
+    silver_trades["trades"]
+    silver_yield_curve["yield_curve"]
+  end
+  subgraph gold
+    gold_curve_metrics_daily["curve_metrics_daily"]
+    gold_curve_snapshot_latest["curve_snapshot_latest"]
+    gold_dataset_freshness["dataset_freshness"]
+    gold_dq_expectations_daily["dq_expectations_daily"]
+    gold_fx_cross_rates["fx_cross_rates"]
+    gold_fx_daily["fx_daily"]
+    gold_ohlcv_1h["ohlcv_1h"]
+    gold_ohlcv_1m["ohlcv_1m"]
+    gold_rates_timeseries["rates_timeseries"]
+  end
+  subgraph ops
+    ops_pipeline_event_log["pipeline_event_log"]
+    ops_quarantine["quarantine"]
+  end
+  bronze_ecb_currency_codelist --> ops_quarantine
+  bronze_ecb_currency_codelist --> silver_currencies
+  bronze_ecb_estr --> ops_quarantine
+  bronze_ecb_estr --> silver_estr
+  bronze_ecb_estr --> silver_series_attributes
+  bronze_ecb_fx_reference_rates --> ops_quarantine
+  bronze_ecb_fx_reference_rates --> silver_fx_rates
+  bronze_ecb_fx_reference_rates --> silver_series_attributes
+  bronze_ecb_yield_curve_aaa --> ops_quarantine
+  bronze_ecb_yield_curve_aaa --> silver_series_attributes
+  bronze_ecb_yield_curve_aaa --> silver_yield_curve
+  bronze_ecb_yield_curve_all --> ops_quarantine
+  bronze_ecb_yield_curve_all --> silver_series_attributes
+  bronze_ecb_yield_curve_all --> silver_yield_curve
+  bronze_ingest_manifests --> gold_dataset_freshness
+  bronze_synth_book_snapshots --> ops_quarantine
+  bronze_synth_book_snapshots --> silver_book_top
+  bronze_synth_trades --> ops_quarantine
+  bronze_synth_trades --> silver_trades
+  gold_ohlcv_1m --> gold_ohlcv_1h
+  silver_estr --> gold_rates_timeseries
+  silver_fx_rates --> gold_fx_cross_rates
+  silver_fx_rates --> gold_fx_daily
+  silver_trades --> gold_ohlcv_1m
+  silver_yield_curve --> gold_curve_metrics_daily
+  silver_yield_curve --> gold_curve_snapshot_latest
+  silver_yield_curve --> gold_rates_timeseries
