@@ -15,7 +15,7 @@ One catalog per environment (`mdl_dev`, `mdl_prod`) and one schema per layer:
 | `silver` | Typed and validated tables; AUTO CDC SCD1 facts and SCD2 reference data | pipeline |
 | `gold` | Contract-bound marts | pipeline, plus `dq_expectations_daily` written by `post_checks` |
 | `ops` | `quarantine` (pipeline) and `contract_results` (post_checks) | pipeline / job |
-| `scratch` (dev only) | Tables and files created and dropped by the serverless test job | bundle |
+| `scratch` (dev only, transient) | Tables and files of the serverless test job | created at the start of each `mdl-tests` run, dropped at the end |
 
 The catalogs themselves come from `scripts/uc_bootstrap.py`. On Free Edition
 the catalogs REST API, and therefore the bundle `catalogs` resource, cannot
