@@ -24,3 +24,4 @@ derby.log
 *.csv
 *.json.gz
 _delta_log/
+!.env.example

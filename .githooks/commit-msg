@@ -1,0 +1,6 @@
+#!/bin/sh
+# Block commit messages that contain workspace identifiers or secrets.
+if [ -x .venv/Scripts/python.exe ]; then PY=.venv/Scripts/python.exe
+elif [ -x .venv/bin/python ]; then PY=.venv/bin/python
+else PY=python3; fi
+exec "$PY" scripts/check_secrets.py --message "$1"
