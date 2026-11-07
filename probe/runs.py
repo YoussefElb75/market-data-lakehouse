@@ -63,7 +63,8 @@ def main(argv: list[str]) -> int:
     detail = _cli(args.profile, "jobs", "get-run", str(run["run_id"]))
     for task in detail.get("tasks", []):
         tstate = task["state"]
-        print(f"task {task['task_key']}: {tstate.get('result_state')} {tstate.get('state_message', '')[:300]}")
+        message = tstate.get("state_message", "")[:300]
+        print(f"task {task['task_key']}: {tstate.get('result_state')} {message}")
         out = _cli(args.profile, "jobs", "get-run-output", str(task["run_id"]))
         for key in ("logs", "error", "error_trace"):
             if out.get(key):

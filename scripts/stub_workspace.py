@@ -1,7 +1,7 @@
 """Minimal local stand-in for the two workspace endpoints `bundle validate` calls.
 
 Lets CI run `databricks bundle validate` with no real workspace and no secret.
-Usage: python probe/stub_workspace.py 8765
+Usage: python scripts/stub_workspace.py 8765
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    def do_GET(self) -> None:  # noqa: N802 - http.server naming
+    def do_GET(self) -> None:
         path = self.path.split("?")[0]
         if path.endswith("/scim/v2/Me"):
             self._send(200, ME)
@@ -32,7 +32,7 @@ class Handler(BaseHTTPRequestHandler):
             sys.stderr.write(f"stub: unhandled GET {self.path}\n")
             self._send(404, {"error_code": "NOT_FOUND", "message": path})
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
         self.rfile.read(length)
         if self.path.split("?")[0].endswith("/workspace/mkdirs"):

@@ -77,8 +77,9 @@ def scan_text(text: str, where: str, literals: Iterable[str]) -> Iterator[Findin
 
 
 def _git(*args: str) -> str:
-    return subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8",
-                          errors="replace", check=True).stdout
+    return subprocess.run(
+        ["git", *args], capture_output=True, text=True, encoding="utf-8", errors="replace", check=True
+    ).stdout
 
 
 def staged_files() -> Iterator[tuple[str, str]]:

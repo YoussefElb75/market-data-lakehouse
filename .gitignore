@@ -25,3 +25,8 @@ derby.log
 *.json.gz
 _delta_log/
 !.env.example
+
+# build output
+*.egg-info/
+build/
+dist/

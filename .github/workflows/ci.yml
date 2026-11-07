@@ -1,0 +1,83 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  DATABRICKS_CLI_VERSION: "1.24.0"
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -e ".[spark,dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy
+      - name: Secret and workspace-identifier scan
+        run: python scripts/check_secrets.py --all
+
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Lakeflow pipelines on the CURRENT channel run Spark 4.1 (DBR 18.3).
+          - { pyspark: "4.1.1", delta: "4.3.1" }
+          # Serverless job environment 6 runs Spark 4.2.
+          - { pyspark: "4.2.0", delta: "4.4.1" }
+    name: test (pyspark ${{ matrix.pyspark }})
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -e ".[spark,dev]" "pyspark==${{ matrix.pyspark }}" "delta-spark==${{ matrix.delta }}"
+      - run: pytest
+
+  bundle:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install pinned Databricks CLI (checksum verified)
+        run: |
+          v="$DATABRICKS_CLI_VERSION"
+          base="https://github.com/databricks/cli/releases/download/v${v}"
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "${base}/databricks_cli_${v}_linux_amd64.zip"
+          curl -fsSLO "${base}/databricks_cli_${v}_SHA256SUMS"
+          grep " databricks_cli_${v}_linux_amd64.zip\$" "databricks_cli_${v}_SHA256SUMS" | sha256sum -c -
+          unzip -q "databricks_cli_${v}_linux_amd64.zip" -d databricks-cli
+          echo "$RUNNER_TEMP/databricks-cli" >> "$GITHUB_PATH"
+      - run: databricks --version
+      - name: Validate bundles offline (no workspace, no secrets)
+        run: |
+          if [ -f databricks.yml ]; then
+            for t in dev prod; do scripts/bundle_validate_offline.sh . "$t" "$RUNNER_TEMP/bundle-$t.json"; done
+          fi
+          scripts/bundle_validate_offline.sh probe/bundle probe

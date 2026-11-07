@@ -25,5 +25,5 @@ afterwards: the bundle, the `mdl_probe` catalog and the service principal.
 | Lineage REST API (`lineage-tracking/table-lineage`) | Returns table and pipeline lineage within minutes | Lineage is documented from the API and Catalog Explorer |
 | `system.access.table_lineage`, `system.billing.usage`, `system.lakeflow.jobs` | Readable, still empty after about 20 minutes (ingestion lag) | Rechecked in milestone 5; cost notes use them if they fill |
 | `bundle deploy`, `run`, `destroy` with an OAuth CLI profile | Work | Host stays in the local profile; `databricks.yml` holds no host |
-| `bundle validate` with no workspace | Fails: it calls `/api/2.0/preview/scim/v2/Me` | CI runs `validate --strict` against `probe/stub_workspace.py`, a local stub, with no secret |
+| `bundle validate` with no workspace | Fails: it calls `/api/2.0/preview/scim/v2/Me` | CI runs `validate --strict` against `scripts/stub_workspace.py`, a local stub, with no secret |
 | `bundle validate --strict` | Fails on type warnings; unresolved `${resources...}` references are **not** reported | CI adds a pytest check on the rendered `validate -o json` |
