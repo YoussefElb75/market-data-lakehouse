@@ -35,6 +35,9 @@ dev = [
     "matplotlib==3.11.2",
 ]
 
+[project.scripts]
+mdl = "mdl.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
