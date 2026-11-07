@@ -23,8 +23,11 @@ cp .env.example .env                                     # fill in local-only va
 ruff check . && ruff format --check . && mypy && pytest
 ```
 
-Delta Lake write tests are marked `delta`. They run in Linux CI and are
-skipped on Windows, which would need Hadoop's `winutils`.
+Spark's local file I/O on Windows needs Hadoop's `winutils`, which this
+project does not install. Unit tests therefore build DataFrames in memory
+with the same reader options as the pipeline. Tests marked `localfs` (real
+file reads with `_metadata`) or `delta` (Delta Lake writes, MERGE, time
+travel) are skipped on Windows and run in Linux CI.
 
 The workspace host lives only in your local Databricks CLI profile
 (`databricks auth login --host https://<workspace-host> --profile mdl`).

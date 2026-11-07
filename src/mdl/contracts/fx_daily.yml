@@ -1,0 +1,25 @@
+apiVersion: mdl/v1
+kind: DataContract
+id: gold.fx_daily
+version: 1.0.0
+status: active
+owner: data-engineering
+description: >-
+  Daily euro foreign exchange reference rates published by the ECB, one row per
+  date and currency, with the inverse quote. Source: ECB statistics.
+source: ecb.fx_reference_rates
+license: 'ECB statistics reuse policy; attribution "Source: ECB statistics"; values unmodified'
+tags: {layer: gold, domain: fx, source: ecb, pii: "false"}
+primary_key: [obs_date, currency]
+freshness: {dataset: fx_reference_rates, max_lag_hours: 80}
+schema:
+  - {name: obs_date, type: date, nullable: false, description: Reference date (ECB TIME_PERIOD)}
+  - {name: currency, type: string, nullable: false, description: ISO 4217 quoted currency}
+  - {name: base_currency, type: string, nullable: false, description: Always EUR}
+  - {name: rate_per_eur, type: double, nullable: false, description: Units of currency per 1 EUR (ECB OBS_VALUE)}
+  - {name: eur_per_unit, type: double, nullable: false, description: "Derived inverse, EUR per unit of currency"}
+  - {name: obs_status, type: string, nullable: true, description: ECB observation status code}
+quality:
+  - {name: positive_rate, sql: rate_per_eur > 0}
+  - {name: base_is_eur, sql: "base_currency = 'EUR'"}
+  - {name: inverse_consistent, sql: abs(rate_per_eur * eur_per_unit - 1) < 1e-9}

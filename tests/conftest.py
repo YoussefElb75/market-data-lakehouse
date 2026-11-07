@@ -14,8 +14,9 @@ from pyspark.sql import SparkSession
 from mdl.thermal import Budget, ThermalGuard
 
 IS_WINDOWS = sys.platform == "win32"
-# Delta Lake writes need Hadoop's winutils on Windows, which this project does
-# not install. Those tests run in Linux CI only.
+# Spark's local file I/O (Hadoop RawLocalFileSystem: listing, reads, Delta writes)
+# needs Hadoop's winutils on Windows, which this project does not install. Tests
+# marked `localfs` or `delta` run in Linux CI only; the rest build DataFrames in memory.
 DELTA_AVAILABLE = not IS_WINDOWS or bool(os.environ.get("HADOOP_HOME"))
 
 _GUARD = ThermalGuard.from_env()
@@ -26,9 +27,9 @@ _state: dict[str, str] = {"module": ""}
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     if DELTA_AVAILABLE:
         return
-    skip = pytest.mark.skip(reason="Delta writes need winutils on Windows; they run in Linux CI")
+    skip = pytest.mark.skip(reason="Spark local file I/O needs winutils on Windows; runs in Linux CI")
     for item in items:
-        if "delta" in item.keywords:
+        if "delta" in item.keywords or "localfs" in item.keywords:
             item.add_marker(skip)
 
 

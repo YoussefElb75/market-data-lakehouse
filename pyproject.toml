@@ -79,5 +79,6 @@ addopts = "-ra --strict-markers"
 markers = [
     "spark: needs a local SparkSession (Java 21)",
     "delta: needs Delta Lake writes; skipped on Windows without winutils, runs in Linux CI",
+    "localfs: Spark reads or writes local files; skipped on Windows without winutils, runs in Linux CI",
 ]
 filterwarnings = ["ignore::DeprecationWarning:pyspark.*"]

@@ -1,0 +1,29 @@
+apiVersion: mdl/v1
+kind: DataContract
+id: gold.curve_metrics_daily
+version: 1.0.0
+status: active
+owner: data-engineering
+description: >-
+  Daily key points and derived shape measures of the ECB spot curves: 2s10s and
+  3m10y slopes and the 2s5s10s butterfly in basis points (derived measures).
+source: ecb.yield_curve_aaa, ecb.yield_curve_all
+license: 'Derived from ECB statistics; attribution "Source: ECB statistics"'
+tags: {layer: gold, domain: rates, source: ecb, derived: "true", pii: "false"}
+primary_key: [obs_date, curve]
+freshness: {dataset: yield_curve_aaa, max_lag_hours: 80}
+schema:
+  - {name: obs_date, type: date, nullable: false, description: Curve date}
+  - {name: curve, type: string, nullable: false, description: AAA or ALL}
+  - {name: y_3m, type: double, nullable: true, description: 3-month spot rate (percent)}
+  - {name: y_2y, type: double, nullable: true, description: 2-year spot rate (percent)}
+  - {name: y_5y, type: double, nullable: true, description: 5-year spot rate (percent)}
+  - {name: y_10y, type: double, nullable: true, description: 10-year spot rate (percent)}
+  - {name: y_30y, type: double, nullable: true, description: 30-year spot rate (percent)}
+  - {name: points, type: bigint, nullable: false, description: Number of curve points that day}
+  - {name: slope_2s10s_bp, type: double, nullable: true, description: 10Y minus 2Y in basis points}
+  - {name: slope_3m10y_bp, type: double, nullable: true, description: 10Y minus 3M in basis points}
+  - {name: butterfly_2s5s10s_bp, type: double, nullable: true, description: 2*5Y - 2Y - 10Y in basis points}
+quality:
+  - {name: complete_curve, sql: points >= 17}
+  - {name: slope_consistent, sql: "slope_2s10s_bp IS NULL OR abs(slope_2s10s_bp - (y_10y - y_2y) * 100) < 1e-6"}

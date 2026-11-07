@@ -1,0 +1,24 @@
+apiVersion: mdl/v1
+kind: DataContract
+id: gold.dq_expectations_daily
+version: 1.0.0
+status: active
+owner: data-engineering
+description: >-
+  Daily data-quality KPIs per pipeline dataset and expectation, from the
+  Lakeflow event log: passed and failed record counts and the pass rate.
+source: pipeline event log
+license: 'Project metadata (MIT)'
+tags: {layer: gold, domain: data_quality, source: event_log, pii: "false"}
+primary_key: [event_date, dataset, rule]
+freshness: {dataset: event_log, max_lag_hours: 48}
+schema:
+  - {name: event_date, type: date, nullable: false, description: Date of the pipeline update}
+  - {name: dataset, type: string, nullable: false, description: Fully qualified table checked}
+  - {name: rule, type: string, nullable: false, description: Expectation name}
+  - {name: passed_records, type: bigint, nullable: false, description: Records that passed}
+  - {name: failed_records, type: bigint, nullable: false, description: Records that failed}
+  - {name: pass_rate, type: double, nullable: true, description: "passed / (passed + failed), null if no records"}
+quality:
+  - {name: rate_in_unit_interval, sql: pass_rate IS NULL OR pass_rate BETWEEN 0 AND 1}
+  - {name: non_negative_counts, sql: passed_records >= 0 AND failed_records >= 0}

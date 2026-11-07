@@ -1,0 +1,22 @@
+apiVersion: mdl/v1
+kind: DataContract
+id: gold.fx_cross_rates
+version: 1.0.0
+status: active
+owner: data-engineering
+description: >-
+  Derived cross rates against USD computed from two ECB euro reference rates
+  (quote per EUR divided by USD per EUR). A derived measure, not an ECB statistic.
+source: ecb.fx_reference_rates
+license: 'Derived from ECB statistics; attribution "Source: ECB statistics"'
+tags: {layer: gold, domain: fx, source: ecb, derived: "true", pii: "false"}
+primary_key: [obs_date, base_currency, quote_currency]
+freshness: {dataset: fx_reference_rates, max_lag_hours: 80}
+schema:
+  - {name: obs_date, type: date, nullable: false, description: Reference date}
+  - {name: base_currency, type: string, nullable: false, description: Base of the cross (USD)}
+  - {name: quote_currency, type: string, nullable: false, description: Quoted currency}
+  - {name: cross_rate, type: double, nullable: false, description: Units of quote currency per 1 unit of base}
+quality:
+  - {name: positive_cross, sql: cross_rate > 0}
+  - {name: not_self, sql: base_currency <> quote_currency}

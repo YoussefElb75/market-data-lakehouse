@@ -1,0 +1,23 @@
+apiVersion: mdl/v1
+kind: DataContract
+id: gold.curve_snapshot_latest
+version: 1.0.0
+status: active
+owner: data-engineering
+description: >-
+  The full euro area spot curve (AAA and all issuers) on the latest date
+  available for each curve. Source: ECB statistics.
+source: ecb.yield_curve_aaa, ecb.yield_curve_all
+license: 'ECB statistics reuse policy; attribution "Source: ECB statistics"; values unmodified'
+tags: {layer: gold, domain: rates, source: ecb, pii: "false"}
+primary_key: [curve, tenor]
+freshness: {dataset: yield_curve_aaa, max_lag_hours: 80}
+schema:
+  - {name: snapshot_date, type: date, nullable: false, description: Latest available curve date}
+  - {name: curve, type: string, nullable: false, description: AAA or ALL (all issuers)}
+  - {name: tenor, type: string, nullable: false, description: Tenor label such as 10Y}
+  - {name: tenor_years, type: double, nullable: false, description: Tenor in years}
+  - {name: yield_pct, type: double, nullable: false, description: Spot rate in percent}
+quality:
+  - {name: known_curve, sql: "curve IN ('AAA', 'ALL')"}
+  - {name: plausible_yield, sql: yield_pct BETWEEN -5 AND 25}

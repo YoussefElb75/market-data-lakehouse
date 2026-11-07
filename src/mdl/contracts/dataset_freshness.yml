@@ -1,0 +1,27 @@
+apiVersion: mdl/v1
+kind: DataContract
+id: gold.dataset_freshness
+version: 1.0.0
+status: active
+owner: data-engineering
+description: >-
+  Freshness per landed dataset from the ingestion manifests: last successful
+  fetch, last observation period, batch counts and lag against the SLA.
+source: ingestion manifests
+license: 'Project metadata (MIT)'
+tags: {layer: gold, domain: data_quality, source: manifests, pii: "false"}
+primary_key: [source, dataset]
+freshness: {dataset: manifests, max_lag_hours: 48}
+schema:
+  - {name: source, type: string, nullable: false, description: ecb or synth}
+  - {name: dataset, type: string, nullable: false, description: Landed dataset name}
+  - {name: last_fetched_at, type: timestamp, nullable: false, description: Last successful fetch (UTC)}
+  - {name: last_period, type: string, nullable: true, description: Latest observation period seen}
+  - {name: last_batch_rows, type: bigint, nullable: true, description: Rows in the latest batch}
+  - {name: rows_total, type: bigint, nullable: true, description: Rows landed over all batches}
+  - {name: batches, type: bigint, nullable: false, description: Number of batches}
+  - {name: fetch_lag_hours, type: double, nullable: false, description: Hours since the last fetch}
+  - {name: sla_hours, type: double, nullable: true, description: Freshness SLA from the data contract}
+  - {name: within_sla, type: boolean, nullable: true, description: fetch_lag_hours <= sla_hours}
+quality:
+  - {name: non_negative_lag, sql: fetch_lag_hours >= 0}

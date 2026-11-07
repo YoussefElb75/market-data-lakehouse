@@ -1,0 +1,23 @@
+apiVersion: mdl/v1
+kind: DataContract
+id: gold.rates_timeseries
+version: 1.0.0
+status: active
+owner: data-engineering
+description: >-
+  Long daily series of euro rates in percent: the euro short-term rate (ESTR)
+  and every point of the ECB AAA and all-issuer spot curves. Source: ECB statistics.
+source: ecb.estr, ecb.yield_curve_aaa, ecb.yield_curve_all
+license: 'ECB statistics reuse policy; attribution "Source: ECB statistics"; values unmodified'
+tags: {layer: gold, domain: rates, source: ecb, pii: "false"}
+primary_key: [obs_date, series]
+freshness: {dataset: estr, max_lag_hours: 80}
+schema:
+  - {name: obs_date, type: date, nullable: false, description: Observation date}
+  - {name: series, type: string, nullable: false, description: "ESTR, or <curve>_<tenor> such as AAA_10Y"}
+  - {name: tenor, type: string, nullable: false, description: Tenor label (overnight for ESTR)}
+  - {name: tenor_years, type: double, nullable: false, description: Tenor in years}
+  - {name: value_pct, type: double, nullable: false, description: Rate in percent (ECB OBS_VALUE)}
+quality:
+  - {name: plausible_rate, sql: value_pct BETWEEN -5 AND 25}
+  - {name: positive_tenor, sql: tenor_years > 0}
